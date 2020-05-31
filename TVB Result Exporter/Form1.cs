@@ -215,24 +215,24 @@ namespace TVB_Result_Exporter
             DateTime currentTime = new DateTime(0);
 
             // Get the current time of the game from World.json.
-            JToken value = jObject.SelectToken("DateTime");
-            if (value != null)
+            JToken dateTimeData = jObject.SelectToken("DateTime");
+            if (dateTimeData != null)
             {
-                currentTime = DateTime.Parse(value.ToString());
+                currentTime = DateTime.Parse(dateTimeData.ToString());
             }
 
-            value = jObject.SelectToken("Stops");
-            if (value != null)
+            JToken stopsData = jObject.SelectToken("Stops");
+            if (stopsData != null)
             {
                 // Get the number of stops.
-                int stopsCount = value.Count();
+                int stopsCount = stopsData.Count();
                 bool[] stops = new bool[stopsCount];
                 // Get the reached stops.
-                value = jObject.SelectToken("CurrentStopIndex");
-                int stopsReached = int.Parse(value.ToString());
-                if (stopsReached >= 0)
+                JToken currentStopData = jObject.SelectToken("CurrentStopIndex");
+                int currentStopIndex = int.Parse(currentStopData.ToString());
+                if (currentStopIndex >= 0)
                 {
-                    stops[stopsReached] = true;
+                    stops[currentStopIndex] = true;
                 }
 
                 for (int i = 0; i < stopsCount; i++)
