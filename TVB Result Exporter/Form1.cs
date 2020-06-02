@@ -2,15 +2,9 @@
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Net.Sockets;
-using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -20,21 +14,18 @@ namespace TVB_Result_Exporter
     {
         // URI to Ferunbus Telemetry
         private const string BaseUri = "http://localhost:37337/";
-        private const string PlayerUri = BaseUri + "Player";
-        private const string Vehicles = BaseUri + "Vehicles";
-        private const string VehiclesCurrentUri = BaseUri + "Vehicles/Current";
-        private const string MissionUri = BaseUri + "Mission";
-        private const string MapUri = BaseUri + "Map";
-        private const string RouteUri = BaseUri + "Route";
         private const string WorldUri = BaseUri + "World";
-        private const string RoadMapUri = BaseUri + "RoadMap";
+        private const string MissionUri = BaseUri + "Mission";
 
         // Saved route file path
         private string routeFilePath;
         private string shuttleRouteFilePath;
 
         private GetTelemetry telemetry;
+        private ResultData resultData;
 
+        int tmpBoardingPeopleCount = 0;
+        
         private const string appName = "TVB Result Exporter";
 
         public Form1()
@@ -44,9 +35,10 @@ namespace TVB_Result_Exporter
             this.Text = appName;
             this.ShowInTaskbar = false;
             this.timer1.Interval = 1000;
-            this.timer1.Start();
+            this.timer1.Enabled = true;
 
             telemetry = new GetTelemetry();
+            resultData = new ResultData();
 
             string basePath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             routeFilePath = basePath + @"\Ferunbus\Saved\Routes\Germany";
@@ -70,7 +62,14 @@ namespace TVB_Result_Exporter
         // 'Quit' menu.
         private void exitToolStripMenuItem_Click(object sender, EventArgs e)
         {
+            File.Delete($"{Directory.GetCurrentDirectory()}/{appName}.tmp");
             Application.Exit();
+        }
+
+        // Close button was pressed.
+        private void Form1_FormClosed(object sender, FormClosedEventArgs e)
+        {
+            File.Delete($"{Directory.GetCurrentDirectory()}/{appName}.tmp");
         }
 
         // Remove icon from taskbar when minimized.
@@ -82,87 +81,55 @@ namespace TVB_Result_Exporter
             }
         }
 
+        // Double clicking on the text box will select all text.
+        private void textBox1_DoubleClick(object sender, EventArgs e)
+        {
+            textBox1.SelectAll();
+        }
+
+        // Copy to Clipboard.
+        private void button1_Click(object sender, EventArgs e)
+        {
+            if (textBox1.Text != "")
+            {
+                Clipboard.SetText(textBox1.Text);
+            }
+        }
+
+        // Copy to clipboard via context menu.
+        private void toolStripMenuItem3_Click(object sender, EventArgs e)
+        {
+            if (textBox1.Text != "")
+            {
+                Clipboard.SetText(textBox1.Text);
+            }
+        }
+
         private async void timer1_Tick(object sender, EventArgs e)
         {
-            //using (StreamReader sr = new StreamReader(@"E:\_work_\Fernbus jason\Mission (1).json"))
-            //{
-            //    string json = sr.ReadToEnd();
-            //    DateTime dateTime = DateTime.Parse("2020-05-27T19:07:42");
-            //    DataExport(json, dateTime);
-            //}
-
             string errors = null;
+            string jexError = null;
 
             try
             {
-                // Examine the open tab and connect only that tab.
-                // Player
-
-                // Call GetTelemetryAsync method.
-                //var playerResult = await telemetry.GetTelemetryAsync(PlayerUri);
-                //if (playerResult != null)
-                //{
-                //    DataExport(playerResult);
-                //}
-
-                // Vehicle
-                //else if (this.tabControl1.SelectedIndex == (int)Tab.CurrentVehicle)
-                //{
-                //    this.grid = this.dataGridView2;
-                //    var currentVehicleResult = await telemetry.GetTelemetryAsync(VehiclesCurrentUri);
-                //    if (currentVehicleResult != null)
-                //    {
-                //        displayData.Display(await currentVehicleResult.Content.ReadAsStringAsync(),
-                //              currentVehicleResult.Headers, this.dataGridView2, this.label1);
-                //    }
-                //}
-
-                // Mission
-                var missionResult = await telemetry.GetTelemetryAsync(MissionUri);
-                if (missionResult != null)
-                {
-                    DataExport(missionResult);
-                }
-
-
-                // Map
-                //else if (this.tabControl1.SelectedIndex == (int)Tab.Map)
-                //{
-                //    this.grid = dataGridView4;
-                //    var mapResult = await telemetry.GetTelemetryAsync(MapUri);
-                //    if (mapResult != null)
-                //    {
-                //        displayData.Display(await mapResult.Content.ReadAsStringAsync(),
-                //            mapResult.Headers, this.dataGridView4, this.label1);
-                //    }
-                //}
-                //// Route (Navi)
-                //else if (this.tabControl1.SelectedIndex == (int)Tab.Route)
-                //{
-                //    this.grid = dataGridView5;
-                //    var routeResult = await telemetry.GetTelemetryAsync(RouteUri);
-                //    if (routeResult != null)
-                //    {
-                //        displayData.Display(await routeResult.Content.ReadAsStringAsync(),
-                //            routeResult.Headers, this.dataGridView5, this.label1);
-                //    }
-                //}
                 // World
-
-
                 var worldResult = await telemetry.GetTelemetryAsync(WorldUri);
                 if (worldResult != null)
                 {
-                    DataExport(worldResult);
+                    JObject jObject = JObject.Parse(worldResult);
+                    JToken dateTimeData = jObject.SelectToken("DateTime");
+                    if (dateTimeData != null)
+                    {
+                        DateTime currentTime = DateTime.Parse(dateTimeData.ToString());
+                        // Mission
+                        var missionResult = await telemetry.GetTelemetryAsync(MissionUri);
+                        if (missionResult != null)
+                        {
+                            DataExport(missionResult, currentTime);
+                        }
+                    }
+                    //DataExport(worldResult);
                 }
-
-                // Road Map
-                //else if (this.tabControl1.SelectedIndex == (int)Tab.RoadMap)
-                //{
-                //    /* roadmapResult is not implementation, since this JSON data is quite
-                //     * huge that it is not updated in real time in the game.
-                //     * Code needs to be changed significantly when implementing. */
-                //}
             }
             catch (HttpRequestException httpex)
             {
@@ -183,13 +150,17 @@ namespace TVB_Result_Exporter
             catch (JsonReaderException jex)
             {
                 // Defect in json data etc.
-                errors = jex.Message;
+                jexError = jex.Message;
             }
             finally
             {
                 if (errors != null)
                 {
-                    this.notifyIcon1.Text = "Waiting for connection to telemetry.";
+                    this.notifyIcon1.Text = $"Waiting for connection to telemetry.";
+                }
+                else if (jexError != null)
+                {
+                    this.notifyIcon1.Text = "Json parsing failed";
                 }
                 else
                 {
@@ -199,20 +170,24 @@ namespace TVB_Result_Exporter
         }
 
         // Calculate the data.
-        private void DataExport(string json)
+        private void DataExport(string json, DateTime currentTime)
         {
             int passengersTransported = 0;
-            int ticketsSould; // not implemented yet
-            int invalidCheckedIn; // not implemented yet
-            int stopsCompleted = 0;
-            int kilometersDriven; // not implemented yet
-            int scheduledArrive = 0;
-            int scheduledDeperture = 0;
-            int accidents; // not implemented yet
-            int raderControl; // not implemented yet
+
+            using (FileStream fs = File.Create($"{Directory.GetCurrentDirectory()}/{appName}.tmp"))
+            using (StreamReader sr = new StreamReader(fs))
+            {
+                var o = JsonConvert.DeserializeObject<ResultData>(sr.ReadToEnd());
+                if (o != null)
+                {
+                    resultData.ticketsSold = o.ticketsSold;
+                    resultData.stopsCompleted = o.stopsCompleted;
+                    resultData.scheduledArrival = o.scheduledArrival;
+                    resultData.scheduledDeparture = o.scheduledDeparture;
+                }
+            }
 
             JObject jObject = JObject.Parse(json);
-            DateTime currentTime = new DateTime(0);
 
             // Get the current time of the game from World.json.
             JToken dateTimeData = jObject.SelectToken("DateTime");
@@ -226,44 +201,84 @@ namespace TVB_Result_Exporter
             {
                 // Get the number of stops.
                 int stopsCount = stopsData.Count();
-                bool[] stops = new bool[stopsCount];
+
                 // Get the reached stops.
                 JToken currentStopData = jObject.SelectToken("CurrentStopIndex");
                 int currentStopIndex = int.Parse(currentStopData.ToString());
                 if (currentStopIndex >= 0)
                 {
-                    stops[currentStopIndex] = true;
-                }
-
-                for (int i = 0; i < stopsCount; i++)
-                {
-                    // Get the Passengers Transported.
-                    passengersTransported += int.Parse(jObject.SelectToken($"Stops[{i}].BoardingPeopleCount").ToString());
-
-                    // Get the Stops Completed.
-                    if (stops[i])
+                    if (!resultData.stopsCompleted.Contains(currentStopIndex))
                     {
-                        stopsCompleted++;
+                        resultData.stopsCompleted.Add(currentStopIndex);
                     }
 
-                    if (currentTime != null) // DataTableにして記録済みにフラグを立てたほうがいいのでは。セーブして再開した場合について。
+                    int boardingPepleCount = int.Parse(jObject.SelectToken($"Stops[{currentStopIndex}].BoardingPeopleCount").ToString());
+
+                    // Tickets were sold if the number of passengers increased after leaving the previous loop.
+                    if (tmpBoardingPeopleCount != boardingPepleCount)
+                    {
+                        // Get ticekts sold.
+                        if (tmpBoardingPeopleCount != 0)
+                        {
+                            if (resultData.ticketsSold.ContainsKey(currentStopIndex))
+                            {
+                                resultData.ticketsSold[currentStopIndex]++;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (!resultData.ticketsSold.ContainsKey(currentStopIndex))
+                        {
+                            resultData.ticketsSold.Add(currentStopIndex, 0);
+                        }
+                    }
+                    tmpBoardingPeopleCount = boardingPepleCount;
+
+                    for (int i = 0; i < stopsCount; i++)
+                    {
+                        // Get the Passengers Transported.
+                        passengersTransported += int.Parse(jObject.SelectToken($"Stops[{i}].BoardingPeopleCount").ToString());
+                    }
+                    resultData.passengersTransported = passengersTransported;
+
+                    if (currentTime != null)
                     {
                         // Get the Scheduled arrival;
-                        DateTime arrivalTime = DateTime.Parse(jObject.SelectToken($"Stops[{i}].ArrivalTime").ToString());
+                        DateTime arrivalTime = DateTime.Parse(jObject.SelectToken($"Stops[{currentStopIndex}].ArrivalTime").ToString());
                         var span = arrivalTime - currentTime;
-                        if (span.TotalSeconds <= 0)
+                        if (span.TotalSeconds > 120)
                         {
-                            scheduledArrive++;
+                            if (!resultData.scheduledArrival.Contains(currentStopIndex))
+                            {
+                                resultData.scheduledArrival.Add(currentStopIndex);
+                            }
                         }
+
                         // Get the Scheduled departure;
-                        DateTime departureTime = DateTime.Parse(jObject.SelectToken($"Stops[{i}].DepartureTime").ToString());
+                        DateTime departureTime = DateTime.Parse(jObject.SelectToken($"Stops[{currentStopIndex}].DepartureTime").ToString());
                         span = departureTime - currentTime;
-                        if (span.TotalSeconds <= 0)
+                        if (span.TotalSeconds > 120)
                         {
-                            scheduledDeperture++;
+                            if (!resultData.scheduledDeparture.Contains(currentStopIndex))
+                            {
+                                resultData.scheduledDeparture.Add(currentStopIndex);
+                            }
                         }
                     }
+                    using (StreamWriter sw = new StreamWriter($"{Directory.GetCurrentDirectory()}/{appName}.tmp"))
+                    {
+                        // Writing to temp file.
+                        var j = JsonConvert.SerializeObject(resultData);
+                        sw.WriteLine(j);
+                    }
                 }
+            }
+            else
+            {
+                // Maybe start new game. So, initialize variables.
+                passengersTransported = 0;
+                resultData = new ResultData();
             }
 
             // Output data.
@@ -272,11 +287,26 @@ namespace TVB_Result_Exporter
             {
                 if (destReached.ToString() == "true")
                 {
-                    this.textBox1.Text = $"{passengersTransported}, _, _, {stopsCompleted}, _, {scheduledArrive}, {scheduledDeperture}, _, _";
-                    this.toolStripMenuItem3.Text = this.textBox1.Text;
-
-                    using (StreamWriter sw = new StreamWriter($"{Directory.GetCurrentDirectory()}/Result.{appName}.txt"))
+                    using (StreamReader sr = new StreamReader($"{Directory.GetCurrentDirectory()}/{appName}.tmp"))
+                    using (StreamWriter sw = new StreamWriter($"{Directory.GetCurrentDirectory()}/Result-{appName}.txt"))
                     {
+
+                        var o = JsonConvert.DeserializeObject<ResultData>(sr.ReadToEnd());
+
+                        int ticketsSold = 0;
+                        foreach(var ticket in o.ticketsSold)
+                        {
+                            ticketsSold += ticket.Value;
+                        }
+
+                        // Scheduled departure at the last stop is not required.
+                        int scheduledDeparture = o.scheduledDeparture.Count > 0 ? o.scheduledDeparture.Count - 1 : 0;
+
+                        this.textBox1.Text = 
+                            $"{o.passengersTransported}, {ticketsSold}, _, {o.stopsCompleted.Count}, _, {o.scheduledArrival.Count}, " +
+                            $"{scheduledDeparture}, _, _";
+                        this.toolStripMenuItem3.Text = this.textBox1.Text;
+
                         sw.WriteLine(textBox1.Text);
                         sw.WriteLine();
                         sw.WriteLine("All you need to submit is:\n" +
@@ -300,32 +330,26 @@ namespace TVB_Result_Exporter
 
         }
 
-        // Double clicking on the text box will select all text.
-        private void textBox1_DoubleClick(object sender, EventArgs e)
-        {
-            textBox1.SelectAll();
-        }
-
-        // Copy to Clipboard.
-        private void button1_Click(object sender, EventArgs e)
-        {
-            if (textBox1.Text != "")
-            {
-                Clipboard.SetText(textBox1.Text);
-            }
-        }
-
-        private void toolStripMenuItem3_Click(object sender, EventArgs e)
-        {
-            if (textBox1.Text != "")
-            {
-                Clipboard.SetText(textBox1.Text);
-            }
-        }
-
         private void GetKilometres(string folderPath)
         {
+        }
 
+    }
+
+    class ResultData
+    {
+        public int passengersTransported { get; set; }
+        public Dictionary<int, int> ticketsSold;
+        public List<int> stopsCompleted;
+        public List<int> scheduledArrival;
+        public List<int> scheduledDeparture;
+
+        public ResultData()
+        {
+            ticketsSold = new Dictionary<int, int>();
+            stopsCompleted = new List<int>();
+            scheduledArrival = new List<int>();
+            scheduledDeparture = new List<int>();
         }
     }
 }
